@@ -1,16 +1,18 @@
+import os
 import sys
 import pgzero
-import pgzrun
+
+# Ensure assets load from the project root (where images/ and sounds/ live)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+os.chdir(PROJECT_ROOT)
 
 from app import App
 from game import WIDTH as _WIDTH, HEIGHT as _HEIGHT, TITLE as _TITLE
 
-# Pygame Zero reads these constants from the main module
 WIDTH = _WIDTH
 HEIGHT = _HEIGHT
 TITLE = _TITLE
 
-# Version checks preserved (from original)
 if sys.version_info < (3, 5):
     print("This game requires at least version 3.5 of Python. Please download it from www.python.org")
     sys.exit()
@@ -26,12 +28,7 @@ if pgzero_version < [1, 2]:
 app = App()
 
 def update():
-    # Thin delegate required by Task A
     app.update()
 
 def draw():
-    # Thin delegate required by Task A
     app.draw()
-
-if __name__ == "__main__":
-    pgzrun.go()

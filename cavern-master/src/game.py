@@ -1,5 +1,5 @@
 from random import choice, randint, random, shuffle
-from pgzero.builtins import Actor, screen, sounds
+import pgzero.builtins as pgb
 
 # Set up constants
 WIDTH = 800
@@ -61,7 +61,7 @@ def draw_text(text, y, x=None):
     if x is None:
         x = (WIDTH - sum([char_width(c) for c in text])) // 2
     for char in text:
-        screen.blit("font0" + str(ord(char)), (x, y))
+        pgb.screen.blit("font0" + str(ord(char)), (x, y))
         x += char_width(char)
 
 IMAGE_WIDTH = {"life": 44, "plus": 40, "health": 40}
@@ -81,11 +81,11 @@ def draw_status(game):
 
     x = 0
     for image in lives_health:
-        screen.blit(image, (x, 450))
+        pgb.screen.blit(image, (x, 450))
         x += IMAGE_WIDTH[image]
 
 
-class CollideActor(Actor):
+class CollideActor(pgb.Actor):
     def __init__(self, game, pos, anchor=ANCHOR_CENTRE):
         super().__init__("blank", pos, anchor)
         self.game = game
@@ -115,7 +115,6 @@ class Orb(CollideActor):
 
     def __init__(self, game, pos, dir_x):
         super().__init__(game, pos)
-
         self.direction_x = dir_x
         self.floating = False
         self.trapped_enemy_type = None
@@ -176,7 +175,7 @@ class Bolt(CollideActor):
         self.image = "bolt" + direction_idx + anim_frame
 
 
-class Pop(Actor):
+class Pop(pgb.Actor):
     def __init__(self, game, pos, type):
         super().__init__("blank", pos)
         self.game = game
@@ -243,7 +242,6 @@ class Fruit(GravityActor):
             else:
                 self.game.player.score += (self.type + 1) * 100
                 self.game.play_sound("score")
-
             self.time_to_live = 0
         else:
             self.time_to_live -= 1
@@ -257,13 +255,10 @@ class Fruit(GravityActor):
 
 class Player(GravityActor):
     def __init__(self):
-        # Game gets set when Game(player=Player()) runs
-        # Temporary placeholder; Game.__init__ will assign self.game correctly.
-        super().__init__(game=None, pos=(0, 0))  # type: ignore[arg-type]
+        super().__init__(game=None, pos=(0, 0))  # game attached later
         self.lives = 2
         self.score = 0
 
-        # These are set in reset()
         self.direction_x = 1
         self.fire_timer = 0
         self.hurt_timer = 0
@@ -271,7 +266,6 @@ class Player(GravityActor):
         self.blowing_orb = None
 
     def attach_game(self, game):
-        # Called by Game when it owns this player
         self.game = game
 
     def reset(self):
@@ -298,7 +292,6 @@ class Player(GravityActor):
         return False
 
     def update(self, input_state):
-        # detect collisions while falling only if health > 0
         super().update(self.health > 0)
 
         self.fire_timer -= 1
@@ -307,7 +300,7 @@ class Player(GravityActor):
         if self.landed:
             self.hurt_timer = min(self.hurt_timer, 100)
 
-        dx = 0  # keep for sprite selection
+        dx = 0
 
         if self.hurt_timer > 100:
             if self.health > 0:
@@ -491,7 +484,6 @@ class Game:
     def update(self, input_state=None):
         self.timer += 1
 
-        # Update all objects; player gets input_state
         for obj in self.fruits + self.bolts + self.enemies + self.pops + self.orbs:
             obj.update()
 
@@ -517,7 +509,7 @@ class Game:
                 self.next_level()
 
     def draw(self):
-        screen.blit("bg%d" % self.level_colour, (0, 0))
+        pgb.screen.blit("bg%d" % self.level_colour, (0, 0))
         block_sprite = "block" + str(self.level % 4)
 
         for row_y in range(NUM_ROWS):
@@ -526,7 +518,7 @@ class Game:
                 x = LEVEL_X_OFFSET
                 for block in row:
                     if block != " ":
-                        screen.blit(block_sprite, (x, row_y * GRID_BLOCK_SIZE))
+                        pgb.screen.blit(block_sprite, (x, row_y * GRID_BLOCK_SIZE))
                     x += GRID_BLOCK_SIZE
 
         all_objs = self.fruits + self.bolts + self.enemies + self.pops + self.orbs
@@ -536,10 +528,9 @@ class Game:
             obj.draw()
 
     def play_sound(self, name, count=1):
-        # Preserve original behavior: no sounds if no player (menu)
         if self.player:
             try:
-                sound = getattr(sounds, name + str(randint(0, count - 1)))
+                sound = getattr(pgb.sounds, name + str(randint(0, count - 1)))
                 sound.play()
             except Exception as e:
                 print(e)

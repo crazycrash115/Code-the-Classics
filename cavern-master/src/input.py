@@ -7,11 +7,11 @@ class InputState:
     right: bool
     up: bool
 
-    jump_pressed: bool   # edge - used for menu start (SPACE)
-    fire_pressed: bool   # edge - orb creation (SPACE press)
-    fire_held: bool      # level - blow further (SPACE held)
+    jump_pressed: bool   # edge (SPACE) used to start game in menu
+    fire_pressed: bool   # edge (SPACE) used to fire orb
+    fire_held: bool      # level (SPACE) used to blow orb further
 
-    pause_pressed: bool  # edge - toggle pause (P)
+    pause_pressed: bool  # edge (P) toggles pause
 
 class InputManager:
     def __init__(self):
@@ -34,7 +34,7 @@ class InputManager:
             fire_pressed=space_edge,
             fire_held=space_now,
 
-            pause_pressed=p_edge,
+            pause_pressed=p_edge
         )
 
         self._prev_space = space_now

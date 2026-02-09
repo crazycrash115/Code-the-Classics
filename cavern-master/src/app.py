@@ -7,7 +7,7 @@ class App:
         self.screen = MenuScreen(self)
 
     def change_screen(self, new_screen):
-        # Single transition method required by Task A
+        # Single method for screen transitions (Task A)
         self.screen = new_screen
 
     def update(self):

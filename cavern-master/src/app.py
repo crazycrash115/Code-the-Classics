@@ -1,5 +1,5 @@
-from input import InputManager
-from screens.menu import MenuScreen
+from src.screens.menu import MenuScreen
+from src.input import InputManager
 
 class App:
     def __init__(self):

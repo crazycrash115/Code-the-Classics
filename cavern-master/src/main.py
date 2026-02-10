@@ -16,8 +16,8 @@ import pgzrun
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 os.chdir(PROJECT_ROOT)
 
-from app import App
-from game import WIDTH as _WIDTH, HEIGHT as _HEIGHT, TITLE as _TITLE
+from src.app import App
+from src.game import WIDTH as _WIDTH, HEIGHT as _HEIGHT, TITLE as _TITLE
 
 # Pygame Zero reads these constants from the main module
 WIDTH = _WIDTH

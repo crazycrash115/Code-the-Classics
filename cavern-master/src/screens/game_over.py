@@ -1,6 +1,6 @@
 import pgzero.builtins as pgb
 
-from game import draw_status
+from src.game import draw_status
 
 
 class GameOverScreen:
@@ -12,7 +12,7 @@ class GameOverScreen:
     def update(self, input_state):
         if input_state.jump_pressed:
             # Lazy import avoids circular imports between screens
-            from screens.menu import MenuScreen
+            from src.screens.menu import MenuScreen
             self.app.change_screen(MenuScreen(self.app))
 
     def draw(self, screen):

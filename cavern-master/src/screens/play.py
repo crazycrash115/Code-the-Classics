@@ -1,4 +1,4 @@
-from game import Game, Player, draw_status, draw_text
+from src.game import Game, Player, draw_status, draw_text
 
 
 class PlayScreen:
@@ -21,7 +21,7 @@ class PlayScreen:
         # Match original: game over when lives < 0
         if self.game.player and self.game.player.lives < 0:
             # Lazy import avoids circular imports between screens
-            from screens.game_over import GameOverScreen
+            from src.screens.game_over import GameOverScreen
             self.app.change_screen(GameOverScreen(self.app, self.game))
 
     def draw(self, screen):

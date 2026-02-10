@@ -61,13 +61,17 @@ def char_width(char):
 def draw_text(text, y, x=None, screen=None):
     """Draws text using the game's bitmap font.
 
-    Refactor note:
-    - Screens now pass a `screen` surface into draw() methods.
-    - The original code drew directly to pgzero.builtins.screen.
-    - To preserve behavior and support the refactor, `screen` is optional.
+    IMPORTANT FIX:
+    - Your refactor passes `screen` down (app.draw(screen) -> screen.draw(screen) -> game.draw(screen)).
+    - On your pgzero version, pgzero.builtins has NO 'screen', so we must NOT fallback to pgb.screen.
+    - If screen is missing, we raise a clear error instead of crashing later.
     """
     if screen is None:
-        screen = pgb.screen
+        raise RuntimeError(
+            "draw_text() requires a 'screen' argument. "
+            "Call it like draw_text('HELLO', y, screen=screen) from a draw(screen) method."
+        )
+
     if x is None:
         x = (WIDTH - sum([char_width(c) for c in text])) // 2
 
@@ -80,12 +84,15 @@ IMAGE_WIDTH = {"life": 44, "plus": 40, "health": 40}
 def draw_status(game, screen=None):
     """Draw the HUD (score, level, lives/health).
 
-    Refactor note:
-    - Screens pass a `screen` surface.
-    - Default keeps original behavior.
+    IMPORTANT FIX:
+    - Same as draw_text(): no pgb.screen fallback.
     """
     if screen is None:
-        screen = pgb.screen
+        raise RuntimeError(
+            "draw_status() requires a 'screen' argument. "
+            "Call it like draw_status(game, screen=screen) from a draw(screen) method."
+        )
+
     number_width = CHAR_WIDTH[0]
     s = str(game.player.score)
     draw_text(s, 451, WIDTH - 2 - (number_width * len(s)), screen=screen)
@@ -475,13 +482,14 @@ class Game:
     def draw(self, screen=None):
         """Draw the game scene.
 
-        Refactor note:
-        - Screens call game.draw(screen).
-        - Original code drew directly to pgzero.builtins.screen.
-        - To preserve working behavior, `screen` is optional.
+        IMPORTANT FIX:
+        - No pgb.screen fallback. Your refactor always passes `screen`.
         """
         if screen is None:
-            screen = pgb.screen
+            raise RuntimeError(
+                "Game.draw() requires a 'screen' argument. "
+                "Call it like self.game.draw(screen) from a draw(screen) method."
+            )
 
         screen.blit("bg%d" % self.level_colour, (0, 0))
 

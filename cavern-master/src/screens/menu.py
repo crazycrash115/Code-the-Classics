@@ -1,6 +1,6 @@
 import pgzero.builtins as pgb
 
-from game import Game, draw_text
+from src.game import Game, draw_text
 
 
 class MenuScreen:
@@ -16,17 +16,15 @@ class MenuScreen:
 
         if input_state.jump_pressed:
             # Lazy import avoids circular imports between screens
-            from screens.play import PlayScreen
+            from src.screens.play import PlayScreen
             self.app.change_screen(PlayScreen(self.app))
 
     def draw(self, screen):
         self.game.draw(screen)
-        screen.blit("title", (150, 50))
 
-        # Original menu overlay: title + animated space prompt
-        # NOTE: This second blit was present during refactoring. It is redundant with the line above,
-        # but is kept to preserve current behavior exactly.
-        pgb.screen.blit("title", (150, 50))
+        # IMPORTANT FIX:
+        # Use the passed-in screen (your refactor), NOT pgb.screen (not available on your pgzero version).
+        screen.blit("title", (150, 50))
 
         # Blink effect based on timer (same style as original)
         if (self.game.timer // 30) % 2 == 0:

@@ -14,5 +14,5 @@ class App:
         input_state = self.input_manager.build()
         self.screen.update(input_state)
 
-    def draw(self):
-        self.screen.draw()
+    def draw(self, screen):
+        self.screen.draw(screen)

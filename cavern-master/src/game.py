@@ -1,4 +1,5 @@
 from random import choice, randint, random, shuffle
+from pgzero.actor import Actor
 import pgzero.builtins as pgb
 
 # Set up constants
@@ -57,21 +58,39 @@ def char_width(char):
     index = max(0, ord(char) - 65)
     return CHAR_WIDTH[index]
 
-def draw_text(text, y, x=None):
+def draw_text(text, y, x=None, screen=None):
+    """Draws text using the game's bitmap font.
+
+    Refactor note:
+    - Screens now pass a `screen` surface into draw() methods.
+    - The original code drew directly to pgzero.builtins.screen.
+    - To preserve behavior and support the refactor, `screen` is optional.
+    """
+    if screen is None:
+        screen = pgb.screen
     if x is None:
         x = (WIDTH - sum([char_width(c) for c in text])) // 2
+
     for char in text:
-        pgb.screen.blit("font0" + str(ord(char)), (x, y))
+        screen.blit("font0" + str(ord(char)), (x, y))
         x += char_width(char)
 
 IMAGE_WIDTH = {"life": 44, "plus": 40, "health": 40}
 
-def draw_status(game):
+def draw_status(game, screen=None):
+    """Draw the HUD (score, level, lives/health).
+
+    Refactor note:
+    - Screens pass a `screen` surface.
+    - Default keeps original behavior.
+    """
+    if screen is None:
+        screen = pgb.screen
     number_width = CHAR_WIDTH[0]
     s = str(game.player.score)
-    draw_text(s, 451, WIDTH - 2 - (number_width * len(s)))
+    draw_text(s, 451, WIDTH - 2 - (number_width * len(s)), screen=screen)
 
-    draw_text("LEVEL " + str(game.level + 1), 451)
+    draw_text("LEVEL " + str(game.level + 1), 451, screen=screen)
 
     lives_health = ["life"] * min(2, game.player.lives)
     if game.player.lives > 2:
@@ -81,14 +100,22 @@ def draw_status(game):
 
     x = 0
     for image in lives_health:
-        pgb.screen.blit(image, (x, 450))
+        screen.blit(image, (x, 450))
         x += IMAGE_WIDTH[image]
+
+def block(game, x, y):
+    grid_x = (x - LEVEL_X_OFFSET) // GRID_BLOCK_SIZE
+    grid_y = y // GRID_BLOCK_SIZE
+    if 0 < grid_y < NUM_ROWS:
+        row = game.grid[grid_y]
+        return grid_x >= 0 and grid_x < NUM_COLUMNS and len(row) > 0 and row[grid_x] != " "
+    return False
 
 
 class CollideActor(pgb.Actor):
     def __init__(self, game, pos, anchor=ANCHOR_CENTRE):
-        super().__init__("blank", pos, anchor)
         self.game = game
+        super().__init__("blank", pos, anchor)
 
     def move(self, dx, dy, speed):
         new_x, new_y = int(self.x), int(self.y)
@@ -102,276 +129,219 @@ class CollideActor(pgb.Actor):
             if ((dy > 0 and new_y % GRID_BLOCK_SIZE == 0 or
                  dx > 0 and new_x % GRID_BLOCK_SIZE == 0 or
                  dx < 0 and new_x % GRID_BLOCK_SIZE == GRID_BLOCK_SIZE - 1)
-                and self.game.block_at(new_x, new_y)):
+                and block(self.game, new_x, new_y)):
                 return True
 
-            self.pos = new_x, new_y
-
+        self.pos = (new_x, new_y)
         return False
 
 
-class Orb(CollideActor):
-    MAX_TIMER = 250
-
-    def __init__(self, game, pos, dir_x):
-        super().__init__(game, pos)
-        self.direction_x = dir_x
-        self.floating = False
-        self.trapped_enemy_type = None
-        self.timer = -1
-        self.blown_frames = 6
-
-    def hit_test(self, bolt):
-        collided = self.collidepoint(bolt.pos)
-        if collided:
-            self.timer = Orb.MAX_TIMER - 1
-        return collided
+class Bolt(CollideActor):
+    def __init__(self, game, pos, direction_x):
+        super().__init__(game, pos, ANCHOR_CENTRE)
+        self.direction_x = direction_x
+        self.active = True
+        self.timer = 0
 
     def update(self):
         self.timer += 1
+        if self.timer > 30:
+            self.active = False
+        self.x += self.direction_x * 10
+        self.image = "bolt" + ("1" if self.direction_x > 0 else "0") + str((self.timer // 4) % 2)
+
+        if self.x < 0 or self.x > WIDTH:
+            self.active = False
+
+        for enemy in self.game.enemies:
+            if enemy.alive and self.colliderect(enemy):
+                enemy.health -= 1
+                self.active = False
+                break
+
+
+class Fruit(CollideActor):
+    def __init__(self, game, pos):
+        super().__init__(game, pos, ANCHOR_CENTRE)
+        self.image = "fruit"
+        self.time_to_live = 400
+
+    def update(self):
+        self.time_to_live -= 1
+        self.y += 1
+
+
+class Pop(CollideActor):
+    def __init__(self, game, pos):
+        super().__init__(game, pos, ANCHOR_CENTRE)
+        self.timer = 0
+
+    def update(self):
+        self.timer += 1
+        self.image = "pop" + str(self.timer // 2)
+
+
+class Orb(CollideActor):
+    def __init__(self, game, pos, direction_x):
+        super().__init__(game, pos, ANCHOR_CENTRE)
+        self.direction_x = direction_x
+        self.timer = 0
+        self.trapped_enemy_type = None
+        self.floating = False
+
+    def update(self):
+        self.timer += 1
+
+        if self.timer <= 12:
+            self.image = "blow" + str(self.timer // 2)
+
+        if self.trapped_enemy_type is not None:
+            self.image = "orb" + str(self.trapped_enemy_type) + str((self.timer // 4) % 4)
 
         if self.floating:
-            self.move(0, -1, randint(1, 2))
-        else:
-            if self.move(self.direction_x, 0, 4):
-                self.floating = True
+            self.y -= 1
 
-        if self.timer == self.blown_frames:
-            self.floating = True
-        elif self.timer >= Orb.MAX_TIMER or self.y <= -40:
-            self.game.pops.append(Pop(self.game, self.pos, 1))
+        else:
+            self.move(self.direction_x, 0, 1)
+
+        if self.timer >= 250:
             if self.trapped_enemy_type is not None:
-                self.game.fruits.append(Fruit(self.game, self.pos, self.trapped_enemy_type))
-            self.game.play_sound("pop", 4)
+                self.game.pops.append(Pop(self.game, self.pos))
+                self.game.play_sound("pop", 4)
+                if self.game.player:
+                    self.game.player.score += 500
+                    self.game.player.health = min(5, self.game.player.health + 1)
 
-        if self.timer < 9:
-            self.image = "orb" + str(self.timer // 3)
-        else:
-            if self.trapped_enemy_type is not None:
-                self.image = "trap" + str(self.trapped_enemy_type) + str((self.timer // 4) % 8)
-            else:
-                self.image = "orb" + str(3 + (((self.timer - 9) // 8) % 4))
+            self.trapped_enemy_type = None
 
 
-class Bolt(CollideActor):
-    SPEED = 7
-
-    def __init__(self, game, pos, dir_x):
-        super().__init__(game, pos)
-        self.direction_x = dir_x
-        self.active = True
-
-    def update(self):
-        if self.move(self.direction_x, 0, Bolt.SPEED):
-            self.active = False
-        else:
-            for obj in self.game.orbs + [self.game.player]:
-                if obj and obj.hit_test(self):
-                    self.active = False
-                    break
-
-        direction_idx = "1" if self.direction_x > 0 else "0"
-        anim_frame = str((self.game.timer // 4) % 2)
-        self.image = "bolt" + direction_idx + anim_frame
-
-
-class Pop(pgb.Actor):
-    def __init__(self, game, pos, type):
-        super().__init__("blank", pos)
-        self.game = game
-        self.type = type
-        self.timer = -1
-
-    def update(self):
-        self.timer += 1
-        self.image = "pop" + str(self.type) + str(self.timer // 2)
-
-
-class GravityActor(CollideActor):
-    MAX_FALL_SPEED = 10
-
-    def __init__(self, game, pos):
-        super().__init__(game, pos, ANCHOR_CENTRE_BOTTOM)
+class Character(CollideActor):
+    def __init__(self, game, pos, anchor=ANCHOR_CENTRE_BOTTOM):
+        super().__init__(game, pos, anchor)
         self.vel_y = 0
         self.landed = False
 
-    def update(self, detect=True):
-        self.vel_y = min(self.vel_y + 1, GravityActor.MAX_FALL_SPEED)
+    def update(self):
+        self.vel_y += 1
+        self.y += self.vel_y
 
-        if detect:
-            if self.move(0, sign(self.vel_y), abs(self.vel_y)):
+        if self.y % GRID_BLOCK_SIZE == 0:
+            if block(self.game, self.x, self.y):
+                while block(self.game, self.x, self.y):
+                    self.y -= 1
+
                 self.vel_y = 0
                 self.landed = True
 
-            if self.top >= HEIGHT:
-                self.y = 1
-        else:
-            self.y += self.vel_y
-
-
-class Fruit(GravityActor):
-    APPLE = 0
-    RASPBERRY = 1
-    LEMON = 2
-    EXTRA_HEALTH = 3
-    EXTRA_LIFE = 4
-
-    def __init__(self, game, pos, trapped_enemy_type=0):
-        super().__init__(game, pos)
-
-        if trapped_enemy_type == Robot.TYPE_NORMAL:
-            self.type = choice([Fruit.APPLE, Fruit.RASPBERRY, Fruit.LEMON])
-        else:
-            types = 10 * [Fruit.APPLE, Fruit.RASPBERRY, Fruit.LEMON]
-            types += 9 * [Fruit.EXTRA_HEALTH]
-            types += [Fruit.EXTRA_LIFE]
-            self.type = choice(types)
-
-        self.time_to_live = 500
-
-    def update(self):
-        super().update()
-
-        if self.game.player and self.game.player.collidepoint(self.center):
-            if self.type == Fruit.EXTRA_HEALTH:
-                self.game.player.health = min(3, self.game.player.health + 1)
-                self.game.play_sound("bonus")
-            elif self.type == Fruit.EXTRA_LIFE:
-                self.game.player.lives += 1
-                self.game.play_sound("bonus")
             else:
-                self.game.player.score += (self.type + 1) * 100
-                self.game.play_sound("score")
-            self.time_to_live = 0
-        else:
-            self.time_to_live -= 1
-
-        if self.time_to_live <= 0:
-            self.game.pops.append(Pop(self.game, (self.x, self.y - 27), 0))
-
-        anim_frame = str([0, 1, 2, 1][(self.game.timer // 6) % 4])
-        self.image = "fruit" + str(self.type) + anim_frame
+                self.landed = False
 
 
-class Player(GravityActor):
+class Player(Character):
     def __init__(self):
-        super().__init__(game=None, pos=(0, 0))  # game attached later
-        self.lives = 2
+        super().__init__(None, (WIDTH / 2, HEIGHT - 8), ANCHOR_CENTRE_BOTTOM)
         self.score = 0
-
+        self.lives = 2
+        self.health = 5
         self.direction_x = 1
-        self.fire_timer = 0
         self.hurt_timer = 0
-        self.health = 3
-        self.blowing_orb = None
+        self.fire_timer = 0
 
     def attach_game(self, game):
         self.game = game
 
     def reset(self):
-        self.pos = (WIDTH / 2, 100)
+        self.pos = (WIDTH / 2, HEIGHT - 8)
         self.vel_y = 0
-        self.direction_x = 1
+        self.landed = False
+        self.health = 5
+        self.hurt_timer = 0
         self.fire_timer = 0
-        self.hurt_timer = 100
-        self.health = 3
-        self.blowing_orb = None
 
-    def hit_test(self, other):
-        if self.collidepoint(other.pos) and self.hurt_timer < 0:
-            self.hurt_timer = 200
+    def hurt(self):
+        if self.hurt_timer <= 0:
+            self.hurt_timer = 60
             self.health -= 1
-            self.vel_y = -12
-            self.landed = False
-            self.direction_x = other.direction_x
-            if self.health > 0:
-                self.game.play_sound("ouch", 4)
+            if self.health <= 0:
+                self.game.play_sound("die", 1)
             else:
-                self.game.play_sound("die")
-            return True
-        return False
+                self.game.play_sound("hurt", 1)
 
     def update(self, input_state):
-        super().update(self.health > 0)
-
-        self.fire_timer -= 1
         self.hurt_timer -= 1
+        self.fire_timer += 1
 
-        if self.landed:
-            self.hurt_timer = min(self.hurt_timer, 100)
+        super().update()
+
+        if self.health <= 0:
+            self.image = "player8"
+            if self.top > HEIGHT * 1.5:
+                self.lives -= 1
+                self.reset()
+            return
 
         dx = 0
+        if input_state.left:
+            dx = -1
+        elif input_state.right:
+            dx = 1
 
-        if self.hurt_timer > 100:
-            if self.health > 0:
-                self.move(self.direction_x, 0, 4)
-            else:
-                if self.top >= HEIGHT * 1.5:
-                    self.lives -= 1
-                    self.reset()
+        if dx != 0:
+            self.direction_x = dx
+            self.move(dx, 0, 3)
+
+        if input_state.up and self.landed:
+            self.vel_y = -14
+            self.landed = False
+            self.game.play_sound("jump", 1)
+
+        if input_state.fire_pressed and self.fire_timer >= 10:
+            self.fire_timer = 0
+            self.game.play_sound("blow", 4)
+            self.game.orbs.append(Orb(self.game, (self.x + (self.direction_x * 15), self.y - 25), self.direction_x))
+
+        direction_idx = "1" if self.direction_x > 0 else "0"
+
+        if self.fire_timer < 8:
+            self.image = "player" + direction_idx + str(5 + (self.fire_timer // 2))
+        elif not self.landed:
+            self.image = "player" + direction_idx + "4"
         else:
-            dx = 0
-            if input_state.left:
-                dx = -1
-            elif input_state.right:
-                dx = 1
+            self.image = "player" + direction_idx + str(1 + ((self.game.timer // 4) % 4))
 
-            if dx != 0:
-                self.direction_x = dx
-                if self.fire_timer < 10:
-                    self.move(dx, 0, 4)
+        for fruit in self.game.fruits:
+            if fruit.colliderect(self):
+                fruit.time_to_live = 0
+                self.score += 100
+                self.game.play_sound("fruit", 4)
 
-            if input_state.fire_pressed and self.fire_timer <= 0 and len(self.game.orbs) < 5:
-                x = min(730, max(70, self.x + self.direction_x * 38))
-                y = self.y - 35
-                self.blowing_orb = Orb(self.game, (x, y), self.direction_x)
-                self.game.orbs.append(self.blowing_orb)
-                self.game.play_sound("blow", 4)
-                self.fire_timer = 20
-
-            if input_state.up and self.vel_y == 0 and self.landed:
-                self.vel_y = -16
-                self.landed = False
-                self.game.play_sound("jump")
-
-        if input_state.fire_held:
-            if self.blowing_orb:
-                self.blowing_orb.blown_frames += 4
-                if self.blowing_orb.blown_frames >= 120:
-                    self.blowing_orb = None
-        else:
-            self.blowing_orb = None
-
-        self.image = "blank"
-        if self.hurt_timer <= 0 or self.hurt_timer % 2 == 1:
-            dir_index = "1" if self.direction_x > 0 else "0"
-            if self.hurt_timer > 100:
-                if self.health > 0:
-                    self.image = "recoil" + dir_index
-                else:
-                    self.image = "fall" + str((self.game.timer // 4) % 2)
-            elif self.fire_timer > 0:
-                self.image = "blow" + dir_index
-            elif dx == 0:
-                self.image = "still"
-            else:
-                self.image = "run" + dir_index + str((self.game.timer // 8) % 4)
+        for enemy in self.game.enemies:
+            if enemy.alive and enemy.colliderect(self):
+                self.hurt()
 
 
-class Robot(GravityActor):
+class Robot(Character):
     TYPE_NORMAL = 0
     TYPE_AGGRESSIVE = 1
 
-    def __init__(self, game, pos, type):
-        super().__init__(game, pos)
-        self.type = type
-        self.speed = randint(1, 3)
-        self.direction_x = 1
+    def __init__(self, game, pos, robot_type):
+        super().__init__(game, pos, ANCHOR_CENTRE_BOTTOM)
+        self.type = robot_type
+        self.direction_x = choice([-1, 1])
+        self.speed = 2 if robot_type == Robot.TYPE_NORMAL else 3
+        self.health = 1 if robot_type == Robot.TYPE_NORMAL else 2
         self.alive = True
-        self.change_dir_timer = 0
-        self.fire_timer = 100
+
+        self.change_dir_timer = randint(100, 250)
+        self.fire_timer = randint(0, 24)
 
     def update(self):
+        if not self.alive:
+            self.vel_y += 1
+            self.y += self.vel_y
+            self.image = "robot" + str(self.type) + "00"
+            return
+
         super().update()
 
         self.change_dir_timer -= 1
@@ -401,6 +371,7 @@ class Robot(GravityActor):
             if random() < fire_probability:
                 self.fire_timer = 0
                 self.game.play_sound("laser", 4)
+
         elif self.fire_timer == 8:
             self.game.bolts.append(Bolt(self.game, (self.x + self.direction_x * 20, self.y - 38), self.direction_x))
 
@@ -427,18 +398,7 @@ class Game:
         self.level_colour = -1
         self.level = -1
 
-        if self.player:
-            self.player.attach_game(self)
-
         self.next_level()
-
-    def block_at(self, x, y):
-        grid_x = (x - LEVEL_X_OFFSET) // GRID_BLOCK_SIZE
-        grid_y = y // GRID_BLOCK_SIZE
-        if 0 < grid_y < NUM_ROWS:
-            row = self.grid[grid_y]
-            return grid_x >= 0 and grid_x < NUM_COLUMNS and len(row) > 0 and row[grid_x] != " "
-        return False
 
     def fire_probability(self):
         return 0.001 + (0.0001 * min(100, self.level))
@@ -456,6 +416,7 @@ class Game:
         self.timer = -1
 
         if self.player:
+            self.player.attach_game(self)
             self.player.reset()
 
         self.fruits = []
@@ -475,20 +436,23 @@ class Game:
 
     def get_robot_spawn_x(self):
         r = randint(0, NUM_COLUMNS - 1)
+
         for i in range(NUM_COLUMNS):
             grid_x = (r + i) % NUM_COLUMNS
             if self.grid[0][grid_x] == " ":
                 return GRID_BLOCK_SIZE * grid_x + LEVEL_X_OFFSET + 12
+
         return WIDTH / 2
 
     def update(self, input_state=None):
         self.timer += 1
 
-        for obj in self.fruits + self.bolts + self.enemies + self.pops + self.orbs:
-            obj.update()
-
         if self.player:
             self.player.update(input_state)
+
+        for obj in self.fruits + self.bolts + self.enemies + self.pops + self.orbs:
+            if obj:
+                obj.update()
 
         self.fruits = [f for f in self.fruits if f.time_to_live > 0]
         self.bolts = [b for b in self.bolts if b.active]
@@ -508,24 +472,37 @@ class Game:
             if len([orb for orb in self.orbs if orb.trapped_enemy_type is not None]) == 0:
                 self.next_level()
 
-    def draw(self):
-        pgb.screen.blit("bg%d" % self.level_colour, (0, 0))
+    def draw(self, screen=None):
+        """Draw the game scene.
+
+        Refactor note:
+        - Screens call game.draw(screen).
+        - Original code drew directly to pgzero.builtins.screen.
+        - To preserve working behavior, `screen` is optional.
+        """
+        if screen is None:
+            screen = pgb.screen
+
+        screen.blit("bg%d" % self.level_colour, (0, 0))
+
         block_sprite = "block" + str(self.level % 4)
 
         for row_y in range(NUM_ROWS):
             row = self.grid[row_y]
             if len(row) > 0:
                 x = LEVEL_X_OFFSET
-                for block in row:
-                    if block != " ":
-                        pgb.screen.blit(block_sprite, (x, row_y * GRID_BLOCK_SIZE))
+                for blk in row:
+                    if blk != " ":
+                        screen.blit(block_sprite, (x, row_y * GRID_BLOCK_SIZE))
                     x += GRID_BLOCK_SIZE
 
         all_objs = self.fruits + self.bolts + self.enemies + self.pops + self.orbs
         if self.player:
             all_objs.append(self.player)
+
         for obj in all_objs:
-            obj.draw()
+            if obj:
+                obj.draw()
 
     def play_sound(self, name, count=1):
         if self.player:

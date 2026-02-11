@@ -3,6 +3,16 @@ import sys
 from pathlib import Path
 import pgzero.loaders
 
+# ---------------------------------------------------------------------------
+# Asset name compatibility layer
+#
+# The original Cavern code expects player sprites named like 'player15'.
+# Your repo's image files are named like 'run10', 'jump1', 'blow1', etc.
+#
+# Instead of renaming files, we patch pgzero's image loader so
+# requests for 'player..' sprites fall back to these assets.
+# ---------------------------------------------------------------------------
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent  # cavern-master/
 pgzero.loaders.set_root(str(PROJECT_ROOT))
 
@@ -15,6 +25,52 @@ import pgzrun
 # Ensure Pygame Zero loads assets from the project root (where images/ and sounds/ live)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 os.chdir(PROJECT_ROOT)
+
+
+def _install_image_aliases() -> None:
+    """Map original sprite names to the actual asset filenames.
+
+    This keeps your game logic intact (it can keep setting Actor.image to
+    'player..' sprites), while allowing the repo to use the provided assets.
+    """
+
+    # Import here so the root is already set up.
+    from pgzero import loaders
+
+    alias: dict[str, str] = {}
+
+    # Death / fallback
+    alias["player8"] = "still"
+
+    # Movement + blowing frames
+    for dir_idx in (0, 1):
+        # Running: only frames 1..3 are used (see Player.update in game.py)
+        alias[f"player{dir_idx}1"] = f"run{dir_idx}0"
+        alias[f"player{dir_idx}2"] = f"run{dir_idx}1"
+        alias[f"player{dir_idx}3"] = f"run{dir_idx}2"
+
+        # Jumping
+        alias[f"player{dir_idx}4"] = f"jump{dir_idx}"
+
+        # Blowing (original expects 5..8)
+        for frame in (5, 6, 7, 8):
+            alias[f"player{dir_idx}{frame}"] = f"blow{dir_idx}"
+
+    original_load = loaders.images.load
+
+    def patched_load(name: str, *args, **kwargs):
+        try:
+            return original_load(name, *args, **kwargs)
+        except KeyError:
+            mapped = alias.get(name)
+            if mapped is None:
+                raise
+            return original_load(mapped, *args, **kwargs)
+
+    loaders.images.load = patched_load
+
+
+_install_image_aliases()
 
 from src.app import App
 from src.game import WIDTH as _WIDTH, HEIGHT as _HEIGHT, TITLE as _TITLE

@@ -1,42 +1,54 @@
+"""Input handling with edge detection for Cavern game."""
 from dataclasses import dataclass
-from pgzero.builtins import keyboard
+
 
 @dataclass
 class InputState:
-    left: bool
-    right: bool
-    up: bool
+    """Snapshot of input state for a single frame."""
+    left: bool = False
+    right: bool = False
+    jump_pressed: bool = False  # Edge detection - UP arrow
+    fire_pressed: bool = False  # Edge detection - SPACE key
+    fire_held: bool = False      # Level detection - SPACE held
+    pause_pressed: bool = False  # Edge detection - P key
+    menu_start: bool = False     # Edge detection - SPACE in menu
 
-    jump_pressed: bool   # edge (SPACE) used to start game in menu
-    fire_pressed: bool   # edge (SPACE) used to fire orb
-    fire_held: bool      # level (SPACE) used to blow orb further
-
-    pause_pressed: bool  # edge (P) toggles pause
 
 class InputManager:
+    """Manages input state and edge detection."""
+    
     def __init__(self):
-        self._prev_space = False
-        self._prev_p = False
-
-    def build(self) -> InputState:
-        space_now = bool(keyboard.space)
-        p_now = bool(keyboard.p)
-
-        space_edge = space_now and not self._prev_space
-        p_edge = p_now and not self._prev_p
-
-        state = InputState(
-            left=bool(keyboard.left),
-            right=bool(keyboard.right),
-            up=bool(keyboard.up),
-
-            jump_pressed=space_edge,
-            fire_pressed=space_edge,
-            fire_held=space_now,
-
-            pause_pressed=p_edge
+        self._space_was_down = False
+        self._up_was_down = False
+        self._p_was_down = False
+    
+    def capture_input(self, keyboard) -> InputState:
+        """Capture current input state with edge detection.
+        
+        Args:
+            keyboard: Pygame Zero keyboard object
+            
+        Returns:
+            InputState object with current frame's input
+        """
+        # Detect space bar edge (just pressed)
+        space_pressed = keyboard.space and not self._space_was_down
+        self._space_was_down = keyboard.space
+        
+        # Detect UP arrow edge (just pressed)
+        up_pressed = keyboard.up and not self._up_was_down
+        self._up_was_down = keyboard.up
+        
+        # Detect P key edge (just pressed)
+        p_pressed = keyboard.p and not self._p_was_down
+        self._p_was_down = keyboard.p
+        
+        return InputState(
+            left=keyboard.left,
+            right=keyboard.right,
+            jump_pressed=up_pressed,          # UP arrow for jumping
+            fire_pressed=space_pressed,       # SPACE for firing orbs
+            fire_held=keyboard.space,         # SPACE held to blow further
+            pause_pressed=p_pressed,
+            menu_start=space_pressed          # SPACE also starts game from menu
         )
-
-        self._prev_space = space_now
-        self._prev_p = p_now
-        return state

@@ -1,32 +1,47 @@
-import pgzero.builtins as pgb
-
-from src.game import Game, draw_text
+"""Menu screen implementation."""
+from src.game import Game
+from src.entities.player import Player
 
 
 class MenuScreen:
+    """Main menu screen."""
+    
     def __init__(self, app):
+        """Initialize menu screen.
+        
+        Args:
+            app: App instance for screen transitions
+        """
         self.app = app
-        # Matches original: menu has a Game with no player (background only)
-        self.game = Game(player=None)
-
+        self.game = None
+    
+    def on_enter(self):
+        """Called when entering this screen."""
+        # Create a game without a player for menu animations
+        self.game = Game(player=None, sounds=self.app.sounds)
+    
     def update(self, input_state):
-        # IMPORTANT: don't run full Game.update() on the menu, because that spawns fruit/enemies.
-        # We only tick the timer so the blink animation stays identical.
-        self.game.timer += 1
-
-        if input_state.jump_pressed:
-            # Lazy import avoids circular imports between screens
+        """Update menu screen.
+        
+        Args:
+            input_state: InputState object with current frame's input
+        """
+        if input_state.menu_start:
+            # Start game - import here to avoid circular dependency
             from src.screens.play import PlayScreen
             self.app.change_screen(PlayScreen(self.app))
-
-    def draw(self, screen):
-        self.game.draw(screen)
-
-        # IMPORTANT FIX:
-        # Use the passed-in screen (your refactor), NOT pgb.screen (not available on your pgzero version).
-        screen.blit("title", (150, 50))
-
-        # Blink effect based on timer (same style as original)
-        if (self.game.timer // 30) % 2 == 0:
-            draw_text("PRESS SPACE", 320, screen=screen)
-            draw_text("TO START", 360, screen=screen)
+        else:
+            # Update game timer for animations
+            self.game.timer += 1
+    
+    def draw(self):
+        """Draw menu screen."""
+        # Draw game background
+        self.game.draw(self.app.screen)
+        
+        # Draw title
+        self.app.screen.blit("title", (0, 0))
+        
+        # Draw "Press SPACE" animation
+        anim_frame = min(((self.game.timer + 40) % 160) // 4, 9)
+        self.app.screen.blit("space" + str(anim_frame), (130, 280))
